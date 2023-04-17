@@ -36,7 +36,7 @@ def is_ip_allowed(ip, allowed_ips):
     return ip in allowed_ips
 
 def run_with_auto_update():
-    UPDATE_INTERVAL = 60  # Check for updates every 60 seconds
+    UPDATE_INTERVAL = 3000  # Check for updates every 60 seconds
     BACKUP_CONFIG_FILE = "cnc_config_backup.json"
 
     while True:
