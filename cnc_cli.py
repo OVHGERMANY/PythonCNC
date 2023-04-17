@@ -5,6 +5,7 @@ import time as time_module
 import os
 import datetime
 import json
+import shutil
 import readline
 import ipaddress
 import sys
@@ -273,7 +274,7 @@ def client_handler(conn, addr, connection_counter):
         conn.close()
 
 def check_for_updates():
-    github_url = "https://github.com/OVHGERMANY/PythonCNC.git"
+    github_url = "https://raw.githubusercontent.com/OVHGERMANY/PythonCNC/main/cnc_cli.py"
     response = requests.get(github_url)
     if response.status_code == 200:
         remote_script = response.text
@@ -283,8 +284,16 @@ def check_for_updates():
                 remote_version = line.split("=")[1].strip().strip('"')
                 break
 
-        if remote_version and remote_version != __version__:
-            return True, remote_script
+        if remote_version:
+            print(f"Local version: {__version__}, Remote version: {remote_version}")
+            if remote_version != __version__:
+                return True, remote_script
+            else:
+                print("No updates found.")
+        else:
+            print("Error: Unable to parse remote version.")
+    else:
+        print(f"Error: Unable to fetch remote script (status code: {response.status_code}).")
     return False, None
 
 def update_script(new_script):
