@@ -10,7 +10,7 @@ import ipaddress
 import sys
 import subprocess
 
-__version__ = "Full Release 1.0"
+__version__ = "Full Release 1.1"
 
 LOG_FILE = "cnc_log.txt"
 CONFIG_FILE = "cnc_config.json"
@@ -35,14 +35,24 @@ def is_ip_allowed(ip, allowed_ips):
     return ip in allowed_ips
 
 def run_with_auto_update():
-    GIT_PULL_INTERVAL = 3000  # Check for updates every 3000 seconds
+    UPDATE_INTERVAL = 60  # Check for updates every 60 seconds
+    BACKUP_CONFIG_FILE = "cnc_config_backup.json"
 
     while True:
         print("Checking for updates...")
-        subprocess.run(["git", "pull"])  # Update the code if there are changes
-        print("Starting the CNC script...")
+        update_available, new_script = check_for_updates()
+        if update_available:
+            print("Update available. Updating the script...")
+            # Backup the JSON configuration file
+            shutil.copy(CONFIG_FILE, BACKUP_CONFIG_FILE)
+            # Update the script
+            update_script(new_script)
+            print("Update completed. Restarting the script...")
+        else:
+            print("No updates found.")
+        
         proc = subprocess.Popen([sys.executable, __file__])  # Start the CNC script
-        time_module.sleep(GIT_PULL_INTERVAL)  # Wait for the specified interval
+        time_module.sleep(UPDATE_INTERVAL)  # Wait for the specified interval
         print("Terminating the CNC script...")
         proc.terminate()  # Terminate the CNC script
 
@@ -263,7 +273,7 @@ def client_handler(conn, addr, connection_counter):
         conn.close()
 
 def check_for_updates():
-    github_url = "https://raw.githubusercontent.com/OVHGERMANY/PythonCNC/main/cnc_cli.py"
+    github_url = "https://github.com/OVHGERMANY/PythonCNC.git"
     response = requests.get(github_url)
     if response.status_code == 200:
         remote_script = response.text
