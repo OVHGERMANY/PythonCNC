@@ -263,7 +263,7 @@ def client_handler(conn, addr, connection_counter):
         conn.close()
 
 def check_for_updates():
-    github_url = "https://raw.githubusercontent.com/OVHGERMANY/PythonCNC/cnc_cli.py"
+    github_url = "https://raw.githubusercontent.com/OVHGERMANY/PythonCNC/main/cnc_cli.py"
     response = requests.get(github_url)
     if response.status_code == 200:
         remote_script = response.text
