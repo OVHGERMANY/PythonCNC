@@ -33,6 +33,7 @@ cd PythonCNC
 python3 cnc_cli.py
 ```
 
+(Removed)
 3. If you want to enable the auto-update feature, run the following command instead:
 
 ```bash
