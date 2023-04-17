@@ -46,28 +46,6 @@ def is_ip_admin(ip, allowed_ips_with_limits):
             return ip_data.get('admin_user', 'no') == 'yes'
     return False
 
-def run_with_auto_update():
-    UPDATE_INTERVAL = 60  # Check for updates every 60 seconds
-    BACKUP_CONFIG_FILE = "cnc_config_backup.json"
-
-    while True:
-        print("Checking for updates...")
-        update_available, new_script = check_for_updates()
-        if update_available:
-            print("Update available. Updating the script...")
-            # Backup the JSON configuration file
-            shutil.copy(CONFIG_FILE, BACKUP_CONFIG_FILE)
-            # Update the script
-            update_script(new_script)
-            print("Update completed. Restarting the script...")
-        else:
-            print("No updates found.")
-        
-        proc = subprocess.Popen([sys.executable, __file__])  # Start the CNC script
-        time_module.sleep(UPDATE_INTERVAL)  # Wait for the specified interval
-        print("Terminating the CNC script...")
-        proc.terminate()  # Terminate the CNC script
-
 def is_ip_whitelisted(ip, whitelist):
     return ip in whitelist
 
@@ -202,12 +180,6 @@ def client_handler(conn, addr, connection_counter):
             conn.send(f"You have reached the connection limit of {connection_limit}.\r\n".encode('utf-8'))
             conn.close()
             log_activity(f"Failed login from {addr[0]}:{addr[1]} (connection limit reached)")
-            return
-
-        if config['updating']:
-            conn.send(b"The CNC is being updated. Please wait...\n")
-            time_module.sleep(30)
-            conn.close()
             return
 
         print(f"Accepted connection from {addr[0]}:{addr[1]}")
@@ -353,7 +325,7 @@ def client_handler(conn, addr, connection_counter):
         conn.close()
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "--auto-update":
+    if len(sys.argv) > 1 and sys.argv[1] == "--dont-run":
         run_with_auto_update()
     else:
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
