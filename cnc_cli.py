@@ -11,7 +11,7 @@ import ipaddress
 import sys
 import subprocess
 
-__version__ = "Full Release 2"
+__version__ = "Full Release 0.1"
 
 LOG_FILE = "cnc_log.txt"
 CONFIG_FILE = "cnc_config.json"
