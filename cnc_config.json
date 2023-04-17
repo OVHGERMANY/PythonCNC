@@ -1,0 +1,17 @@
+{
+    "api_key": "your_api_key",
+    "api_url": "your_api_url",
+    "cnc_port": 8888,
+    "methods": ["method1", "method2", "method3"],
+    "allowed_ips": {
+      "ip_address_1": {"time_limit": 60, "attack_limit": 1, "threads_limit": 50, "connection_limit": 1},
+      "ip_address_2": {"time_limit": 9999, "attack_limit": 10, "threads_limit": 50, "connection_limit": 2}
+    },
+    "whitelist": ["whitelisted_ip_1", "whitelisted_ip_2"],
+    "text_color": "37",
+    "background_color": "0",
+    "auto_disconnect_time": 1200,
+    "enable_attacks": true,
+    "enable_connection_limit": true,
+    "updating": false
+  }
