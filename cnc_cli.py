@@ -324,27 +324,39 @@ def client_handler(conn, addr, connection_counter):
             connection_counter[addr[0]] -= 1
         conn.close()
 
+def start_server():
+    """Start the main CNC server loop."""
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(("", RAW_PORT))
+    server_socket.listen()
+
+    print(f"Listening for Raw connections on port {RAW_PORT}...")
+
+    connection_counter = {}
+    try:
+        while True:
+            conn, addr = server_socket.accept()
+            if addr[0] not in connection_counter:
+                connection_counter[addr[0]] = 0
+            connection_counter[addr[0]] += 1
+            client_thread = threading.Thread(target=client_handler, args=(conn, addr, connection_counter))
+            client_thread.start()
+    except KeyboardInterrupt:
+        print("Shutting down the server...")
+
+def run_with_auto_update():
+    """Attempt to update the repository and restart the server."""
+    try:
+        subprocess.check_call(["git", "pull"])
+    except Exception as e:
+        print(f"Auto-update failed: {e}")
+    os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)])
+
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "--dont-run":
+    if len(sys.argv) > 1 and sys.argv[1] == "--auto-update":
         run_with_auto_update()
-    else:
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind(("", RAW_PORT))
-        server_socket.listen()
-
-        print(f"Listening for Raw connections on port {RAW_PORT}...")
-
-        connection_counter = {}
-        try:
-            while True:
-                conn, addr = server_socket.accept()
-                if addr[0] not in connection_counter:
-                    connection_counter[addr[0]] = 0
-                connection_counter[addr[0]] += 1
-                client_thread = threading.Thread(target=client_handler, args=(conn, addr, connection_counter))
-                client_thread.start()
-        except KeyboardInterrupt:
-            print("Shutting down the server...")
+        return
+    start_server()
 
 if __name__ == "__main__":
     main()
