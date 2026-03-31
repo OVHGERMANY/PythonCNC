@@ -216,6 +216,10 @@ def client_handler(conn, addr, connection_counter):
                     conn.send(b"\033[2J\033[H")  # ANSI escape code to clear the screen
                     print_login_message(conn, methods, config, nickname, addr, allowed_ips_with_limits)
                 elif command[0] == "config":
+                    if addr[0] not in admin_ips:
+                        conn.send(b"Unauthorized command.\n")
+                        log_activity(f"Unauthorized config update attempt by {addr[0]}:{addr[1]}")
+                        continue
                     if len(command) == 3:
                         config_key = command[1]
                         config_value = command[2]
@@ -223,6 +227,7 @@ def client_handler(conn, addr, connection_counter):
                             config[config_key] = config_value
                             save_config(config)
                             conn.send(f"Configuration updated: {config_key} = {config_value}\r\n".encode('utf-8'))
+                            log_activity(f"Admin {addr[0]}:{addr[1]} updated config key: {config_key}")
                         else:
                             conn.send(f"Invalid configuration key: {config_key}\r\n".encode('utf-8'))
                     else:
